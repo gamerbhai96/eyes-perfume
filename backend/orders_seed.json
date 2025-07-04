@@ -1,0 +1,23 @@
+[
+  {
+    "userId": 1,
+    "createdAt": "2024-07-04T10:00:00.000Z",
+    "name": "Alice Admin",
+    "address": "123 Admin St, Perfume City",
+    "phone": "123-456-7890",
+    "items": [
+      { "perfumeId": 1, "quantity": 2 },
+      { "perfumeId": 3, "quantity": 1 }
+    ]
+  },
+  {
+    "userId": 2,
+    "createdAt": "2024-07-04T11:00:00.000Z",
+    "name": "Bob User",
+    "address": "456 User Ave, Perfume City",
+    "phone": "987-654-3210",
+    "items": [
+      { "perfumeId": 2, "quantity": 1 }
+    ]
+  }
+] 
