@@ -1,6 +1,6 @@
 // API utility for admin panel
 // Force Vercel redeploy: 2024-06-09
-export const API_URL = 'https://eyes-perfume-api-zpf7.onrender.com/api';
+export const API_URL = import.meta.env.VITE_API_URL || 'https://eyes-perfume-api-zpf7.onrender.com/api';
 
 // --- Users ---
 export async function getUsers(token: string) {
