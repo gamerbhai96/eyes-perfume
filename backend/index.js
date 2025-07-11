@@ -55,7 +55,13 @@ function generateTempToken(email) {
   return crypto.randomBytes(24).toString('hex') + ':' + email;
 }
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://eyes-perfume-wl8p.vercel.app',
+    'https://eyes-perfume.vercel.app'
+  ],
+  credentials: true
+}));
 app.use(express.json());
 
 // Create users table if not exists
