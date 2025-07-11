@@ -7,10 +7,11 @@ import { useAuth } from '@/hooks/use-auth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Star, Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { API_URL } from '@/lib/api';
 
 const fetchProduct = async (id: string | undefined) => {
   if (!id) throw new Error('No product ID');
-  const res = await fetch(`/api/products/${id}`);
+  const res = await fetch(`${API_URL}/products/${id}`);
   if (!res.ok) throw new Error('Product not found');
   return res.json();
 };
