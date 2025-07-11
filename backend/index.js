@@ -58,7 +58,8 @@ function generateTempToken(email) {
 app.use(cors({
   origin: [
     'https://eyes-perfume-wl8p.vercel.app',
-    'https://eyes-perfume.vercel.app'
+    'https://eyes-perfume.vercel.app',
+    'https://eyes-perfume.onrender.com'
   ],
   credentials: true
 }));
