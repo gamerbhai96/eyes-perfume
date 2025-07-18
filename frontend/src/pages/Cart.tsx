@@ -5,6 +5,7 @@ import { useCart } from '@/hooks/use-cart';
 import { perfumes } from '../data/perfumes';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { API_URL } from '@/lib/api';
 
 interface CartItem {
   perfumeId: number;
@@ -29,7 +30,7 @@ const Cart = () => {
     setLoading(true);
     setError('');
     try {
-      await fetch('http://localhost:4000/api/cart', {
+      await fetch(`${API_URL}/cart`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

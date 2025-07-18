@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sparkles, User, Mail, Lock, Home, Trash2, Edit, ShoppingBag, Repeat } from 'lucide-react';
+import { API_URL } from '@/lib/api';
 
 const Profile = () => {
   const { user, logout, token } = useAuth();
@@ -40,7 +41,7 @@ const Profile = () => {
   useEffect(() => {
     if (!token) navigate('/login');
     else {
-      fetch('http://localhost:4000/api/profile', {
+      fetch(`${API_URL}/profile`, {
         headers: { Authorization: `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -62,7 +63,7 @@ const Profile = () => {
     setError('');
     setSuccess('');
     try {
-      const res = await fetch('http://localhost:4000/api/profile', {
+      const res = await fetch(`${API_URL}/profile`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

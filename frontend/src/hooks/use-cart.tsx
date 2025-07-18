@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './use-auth';
+import { API_URL } from '@/lib/api';
 
 interface CartItem {
   perfumeId: number;
@@ -22,7 +23,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   const fetchCart = async () => {
     if (!token) return setCart([]);
     try {
-      const res = await fetch('http://localhost:4000/api/cart', {
+      const res = await fetch(`${API_URL}/cart`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -39,7 +40,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
 
   const addToCart = async (perfumeId: number, quantity: number = 1) => {
     if (!token) throw new Error('Not authenticated');
-    const res = await fetch('http://localhost:4000/api/cart', {
+    const res = await fetch(`${API_URL}/cart`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -53,16 +54,24 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     await fetchCart();
   };
 
+  const contextValue: CartContextType = {
+    cart,
+    cartCount: cart.length,
+    fetchCart,
+    addToCart,
+  };
+
   return (
-    <CartContext.Provider value={{ cart, cartCount: cart.reduce((sum, i) => sum + i.quantity, 0), fetchCart, addToCart }}>
+    <CartContext.Provider value={contextValue}>
       {children}
     </CartContext.Provider>
   );
 };
 
 export const useCart = () => {
-  const ctx = useContext(CartContext);
-  if (!ctx) throw new Error('useCart must be used within CartProvider');
-  return ctx;
-}; 
- 
+  const context = useContext(CartContext);
+  if (context === undefined) {
+    throw new Error('useCart must be used within a CartProvider');
+  }
+  return context;
+};

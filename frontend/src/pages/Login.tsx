@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Sparkles, Eye, EyeOff, Mail, Lock, KeyRound } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
+import { API_URL } from '@/lib/api';
 
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -45,7 +46,7 @@ const Login = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('http://localhost:4000/api/login', {
+      const res = await fetch(`${API_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -74,7 +75,7 @@ const Login = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('http://localhost:4000/api/verify-otp', {
+      const res = await fetch(`${API_URL}/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp, tempToken })

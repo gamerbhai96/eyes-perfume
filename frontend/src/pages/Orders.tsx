@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { perfumes } from '../data/perfumes';
+import { API_URL } from '@/lib/api';
 
 interface OrderItem {
   perfumeId: number;
@@ -36,7 +37,7 @@ const Orders = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('http://localhost:4000/api/orders', {
+      const res = await fetch(`${API_URL}/orders`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();

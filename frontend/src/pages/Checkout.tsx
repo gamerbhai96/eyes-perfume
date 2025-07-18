@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import confetti from 'canvas-confetti';
+import { API_URL } from '@/lib/api';
 
 const Checkout = () => {
   const { cart, fetchCart } = useCart();
@@ -52,7 +53,7 @@ const Checkout = () => {
     setError('');
     setSuccess('');
     try {
-      const res = await fetch('http://localhost:4000/api/checkout', {
+      const res = await fetch(`${API_URL}/checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
