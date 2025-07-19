@@ -554,16 +554,3 @@ app.delete('/api/admin/orders/:id', authenticateAdmin, (req, res) => {
     });
   });
 });
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-}); 
-const path = require("path");
-
-// Serve static files from React build
-app.use(express.static(path.join(__dirname, "client", "dist"))); // or "client/build" if CRA
-
-// React router fallback (for /admin, etc.)
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "client", "dist", "index.html"));
-});
