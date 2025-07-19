@@ -68,6 +68,7 @@ app.use(express.json());
 // Create users table if not exists
 // id, firstName, lastName, email, passwordHash
 
+console.log("Running query: CREATE TABLE IF NOT EXISTS users");
 db.run(`CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   firstName TEXT NOT NULL,
@@ -284,12 +285,14 @@ app.post('/api/profile', authenticateToken, async (req, res) => {
 });
 
 // --- Cart and Orders Tables ---
+console.log("Running query: CREATE TABLE IF NOT EXISTS cart");
 db.run(`CREATE TABLE IF NOT EXISTS cart (
   userId INTEGER,
   perfumeId INTEGER,
   quantity INTEGER,
   PRIMARY KEY (userId, perfumeId)
 )`);
+console.log("Running query: CREATE TABLE IF NOT EXISTS orders");
 db.run(`CREATE TABLE IF NOT EXISTS orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   userId INTEGER,
@@ -298,6 +301,7 @@ db.run(`CREATE TABLE IF NOT EXISTS orders (
   address TEXT,
   phone TEXT
 )`);
+console.log("Running query: CREATE TABLE IF NOT EXISTS order_items");
 db.run(`CREATE TABLE IF NOT EXISTS order_items (
   orderId INTEGER,
   perfumeId INTEGER,
@@ -368,6 +372,7 @@ app.get('/api/orders', authenticateToken, (req, res) => {
 });
 
 // --- Reviews Table ---
+console.log("Running query: CREATE TABLE IF NOT EXISTS reviews");
 db.run(`CREATE TABLE IF NOT EXISTS reviews (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   perfumeId INTEGER,
@@ -400,11 +405,16 @@ app.get('/api/reviews/:perfumeId', (req, res) => {
 });
 
 // --- Add role column to users table if missing ---
+console.log("Running query: PRAGMA table_info(users)");
 db.all("PRAGMA table_info(users)", (err, columns) => {
   if (!columns.some(col => col.name === 'role')) {
+    console.log("Running query: ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'");
     db.run("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'");
     db.get('SELECT id FROM users ORDER BY id ASC LIMIT 1', (err, row) => {
-      if (row) db.run('UPDATE users SET role = ? WHERE id = ?', ['admin', row.id]);
+      if (row) {
+        console.log("Running query: UPDATE users SET role = 'admin' WHERE id = ?", row.id);
+        db.run('UPDATE users SET role = ? WHERE id = ?', ['admin', row.id]);
+      }
     });
   }
 });
@@ -421,6 +431,7 @@ function authenticateAdmin(req, res, next) {
 }
 
 // --- Products Table ---
+console.log("Running query: CREATE TABLE IF NOT EXISTS products");
 db.run(`CREATE TABLE IF NOT EXISTS products (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -442,11 +453,13 @@ const productColumns = [
   { name: 'isNew', type: 'INTEGER' },
   { name: 'isBestseller', type: 'INTEGER' }
 ];
+console.log("Running query: PRAGMA table_info(products)");
 db.all("PRAGMA table_info(products)", (err, columns) => {
   if (err) return;
   const colNames = columns.map(col => col.name);
   productColumns.forEach(col => {
     if (!colNames.includes(col.name)) {
+      console.log(`Running query: ALTER TABLE products ADD COLUMN ${col.name} ${col.type}`);
       db.run(`ALTER TABLE products ADD COLUMN ${col.name} ${col.type}`);
     }
   });
