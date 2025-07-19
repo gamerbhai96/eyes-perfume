@@ -28,23 +28,24 @@ const App = () => (
       <Sonner />
       <AuthProvider>
         <CartProvider>
-      <BrowserRouter>
-        <Navigation />
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/products" element={<Products />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
+          <BrowserRouter>
+            <Navigation />
+            <Routes>
+              {/* All routes are now correctly placed as direct children */}
+              <Route path="/" element={<Landing />} />
+              <Route path="/products" element={<Products />} />
+              <Route path="/about" element={<About />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/cart" element={<Cart />} />
               <Route path="/checkout" element={<Checkout />} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/products/:id" element={<Product />} />
               <Route path="/admin" element={<Admin />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
         </CartProvider>
       </AuthProvider>
     </TooltipProvider>
