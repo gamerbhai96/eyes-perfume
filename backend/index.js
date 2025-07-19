@@ -554,3 +554,7 @@ app.delete('/api/admin/orders/:id', authenticateAdmin, (req, res) => {
     });
   });
 });
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+}); 
