@@ -434,27 +434,20 @@ app.delete('/api/admin/users/:id', authenticateAdmin, (req, res) => {
 });
 
 app.get('/api/admin/orders', authenticateAdmin, (req, res) => {
-  db.all('SELECT o.*, u.firstName, u.lastName, u.email FROM orders o JOIN users u ON o.userId = u.id ORDER BY o.createdAt DESC', (err, orders) => {
-    if (err) return res.status(500).json({ error: 'Database error' });
-    if (!orders.length) return res.json([]);
-    const orderIds = orders.map(o => o.id);
-    if (!orderIds.length) {
-      // No orders, so return empty items array for each order
-      return res.json(orders.map(order => ({ ...order, items: [] })));
-    }
-    db.all(
-      'SELECT * FROM order_items WHERE orderId IN (' + orderIds.map(() => '?').join(',') + ')',
-      orderIds,
-      (err, items) => {
+    db.all('SELECT o.*, u.firstName, u.lastName, u.email FROM orders o JOIN users u ON o.userId = u.id ORDER BY o.createdAt DESC', (err, orders) => {
         if (err) return res.status(500).json({ error: 'Database error' });
-        const ordersWithItems = orders.map(order => ({
-          ...order,
-          items: items.filter(i => i.orderId === order.id)
-        }));
-        res.json(ordersWithItems);
-      }
-    );
-  });
+        if (!orders.length) return res.json([]);
+
+        const orderIds = orders.map(o => o.id);
+        db.all(`SELECT * FROM order_items WHERE orderId IN (${orderIds.map(() => '?').join(',')})`, orderIds, (err, items) => {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            const ordersWithItems = orders.map(order => ({
+                ...order,
+                items: items.filter(i => i.orderId === order.id)
+            }));
+            res.json(ordersWithItems);
+        });
+    });
 });
 
 app.put('/api/admin/orders/:id', authenticateAdmin, (req, res) => {
