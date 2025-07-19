@@ -10,6 +10,7 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -472,9 +473,34 @@ app.delete('/api/admin/orders/:id', authenticateAdmin, (req, res) => {
 
 
 // === FIX #3: Serves React App and fixes Admin Panel "Not Found" error ===
+// === Serves React App and helps debug the file path ===
 app.use(express.static(path.join(__dirname, '../frontend/dist')));
+
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+    // --- Debugging Code ---
+    const parentDirPath = path.resolve(__dirname, '..');
+    console.log(`[Debug] Checking contents of parent directory: ${parentDirPath}`);
+    
+    fs.readdir(parentDirPath, (err, files) => {
+        if (err) {
+            console.error('[Debug] Error reading directory:', err);
+        } else {
+            console.log('[Debug] Files in parent directory:', files.join(', '));
+        }
+    });
+    // --- End of Debugging Code ---
+
+    const filePath = path.join(__dirname, '../frontend/dist/index.html');
+    console.log(`[Debug] Attempting to send file: ${filePath}`);
+
+    res.sendFile(filePath, (err) => {
+        if (err) {
+            console.error(`[Debug] FAILED TO SEND FILE. Error: ${err.message}`);
+            // Don't send a response here if one has already been sent
+        } else {
+            console.log(`[Debug] Successfully sent file: ${filePath}`);
+        }
+    });
 });
 
 app.listen(PORT, () => {
