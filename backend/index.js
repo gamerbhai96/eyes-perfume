@@ -555,6 +555,18 @@ app.delete('/api/admin/orders/:id', authenticateAdmin, (req, res) => {
   });
 });
 
+// Serve static files from the frontend build
+app.use(express.static(path.join(__dirname, '../frontend/dist')));
+
+// Catch-all: send back index.html for any other route (for React Router)
+app.get('*', (req, res) => {
+  // Only handle non-API requests
+  if (req.path.startsWith('/api') || req.path.startsWith('/auth')) {
+    return res.status(404).send('Not Found');
+  }
+  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 }); 
