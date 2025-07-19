@@ -68,7 +68,6 @@ app.use(express.json());
 // Create users table if not exists
 // id, firstName, lastName, email, passwordHash
 
-console.log("Running query: CREATE TABLE IF NOT EXISTS users");
 db.run(`CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   firstName TEXT NOT NULL,
@@ -285,14 +284,12 @@ app.post('/api/profile', authenticateToken, async (req, res) => {
 });
 
 // --- Cart and Orders Tables ---
-console.log("Running query: CREATE TABLE IF NOT EXISTS cart");
 db.run(`CREATE TABLE IF NOT EXISTS cart (
   userId INTEGER,
   perfumeId INTEGER,
   quantity INTEGER,
   PRIMARY KEY (userId, perfumeId)
 )`);
-console.log("Running query: CREATE TABLE IF NOT EXISTS orders");
 db.run(`CREATE TABLE IF NOT EXISTS orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   userId INTEGER,
@@ -301,7 +298,6 @@ db.run(`CREATE TABLE IF NOT EXISTS orders (
   address TEXT,
   phone TEXT
 )`);
-console.log("Running query: CREATE TABLE IF NOT EXISTS order_items");
 db.run(`CREATE TABLE IF NOT EXISTS order_items (
   orderId INTEGER,
   perfumeId INTEGER,
@@ -372,7 +368,6 @@ app.get('/api/orders', authenticateToken, (req, res) => {
 });
 
 // --- Reviews Table ---
-console.log("Running query: CREATE TABLE IF NOT EXISTS reviews");
 db.run(`CREATE TABLE IF NOT EXISTS reviews (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   perfumeId INTEGER,
@@ -405,16 +400,11 @@ app.get('/api/reviews/:perfumeId', (req, res) => {
 });
 
 // --- Add role column to users table if missing ---
-console.log("Running query: PRAGMA table_info(users)");
 db.all("PRAGMA table_info(users)", (err, columns) => {
   if (!columns.some(col => col.name === 'role')) {
-    console.log("Running query: ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'");
     db.run("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'");
     db.get('SELECT id FROM users ORDER BY id ASC LIMIT 1', (err, row) => {
-      if (row) {
-        console.log("Running query: UPDATE users SET role = 'admin' WHERE id = ?", row.id);
-        db.run('UPDATE users SET role = ? WHERE id = ?', ['admin', row.id]);
-      }
+      if (row) db.run('UPDATE users SET role = ? WHERE id = ?', ['admin', row.id]);
     });
   }
 });
@@ -431,7 +421,6 @@ function authenticateAdmin(req, res, next) {
 }
 
 // --- Products Table ---
-console.log("Running query: CREATE TABLE IF NOT EXISTS products");
 db.run(`CREATE TABLE IF NOT EXISTS products (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -453,13 +442,11 @@ const productColumns = [
   { name: 'isNew', type: 'INTEGER' },
   { name: 'isBestseller', type: 'INTEGER' }
 ];
-console.log("Running query: PRAGMA table_info(products)");
 db.all("PRAGMA table_info(products)", (err, columns) => {
   if (err) return;
   const colNames = columns.map(col => col.name);
   productColumns.forEach(col => {
     if (!colNames.includes(col.name)) {
-      console.log(`Running query: ALTER TABLE products ADD COLUMN ${col.name} ${col.type}`);
       db.run(`ALTER TABLE products ADD COLUMN ${col.name} ${col.type}`);
     }
   });
@@ -533,22 +520,19 @@ app.delete('/api/admin/users/:id', authenticateAdmin, (req, res) => {
 
 // --- Admin: List all orders with user info and items ---
 app.get('/api/admin/orders', authenticateAdmin, (req, res) => {
-  db.all('SELECT o.*, u.firstName, u.lastName, u.email FROM orders o JOIN users u ON o.userId = u.id ORDER BY o.createdAt DESC', (err, orders) => {
-    if (err) return res.status(500).json({ error: 'Database error' });
-    if (!orders.length) return res.json([]);
-    const orderIds = orders.map(o => o.id);
-    if (!orderIds.length) {
-      return res.json(orders.map(order => ({ ...order, items: [] })));
-    }
-    db.all('SELECT * FROM order_items WHERE orderId IN (' + orderIds.map(() => '?').join(',') + ')', orderIds, (err, items) => {
-      if (err) return res.status(500).json({ error: 'Database error' });
-      const ordersWithItems = orders.map(order => ({
-        ...order,
-        items: items.filter(i => i.orderId === order.id)
-      }));
-      res.json(ordersWithItems);
-    });
-  });
+  db.all('SELECT o.*, u.firstName, u.lastName, u.email FROM orders o JOIN users u ON o.userId = u.id ORDER BY o.createdAt DESC', (err, orders) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    if (!orders.length) return res.json([]);
+    const orderIds = orders.map(o => o.id);
+    db.all('SELECT * FROM order_items WHERE orderId IN (' + orderIds.map(() => '?').join(',') + ')', orderIds, (err, items) => {
+      if (err) return res.status(500).json({ error: 'Database error' });
+      const ordersWithItems = orders.map(order => ({
+        ...order,
+        items: items.filter(i => i.orderId === order.id)
+      }));
+      res.json(ordersWithItems);
+    });
+  });
 });
 
 // --- Admin: Update an order ---
@@ -571,17 +555,24 @@ app.delete('/api/admin/orders/:id', authenticateAdmin, (req, res) => {
   });
 });
 
-// Serve static files from the frontend build
+
+// =================================================================
+// --- CORRECTED SECTION START ---
+// This part serves your React application and handles client-side routing.
+// =================================================================
+
+// 1. Serve static assets from the React build folder
 app.use(express.static(path.join(__dirname, '../frontend/dist')));
 
-// Catch-all: send back index.html for any other route (for React Router)
+// 2. The "catch-all" handler: for any request that doesn't
+// match one of the API routes above, send back React's index.html file.
 app.get('*', (req, res) => {
-  // Only handle non-API requests
-  if (req.path.startsWith('/api') || req.path.startsWith('/auth')) {
-    return res.status(404).send('Not Found');
-  }
   res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
+
+// =================================================================
+// --- CORRECTED SECTION END ---
+// =================================================================
 
 
 app.listen(PORT, () => {
