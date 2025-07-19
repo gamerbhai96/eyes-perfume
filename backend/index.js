@@ -66,8 +66,6 @@ app.use(cors({
 app.use(express.json());
 
 // Create users table if not exists
-// id, firstName, lastName, email, passwordHash
-
 db.run(`CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   firstName TEXT NOT NULL,
@@ -234,7 +232,7 @@ app.get('/auth/google/callback',
     // Issue JWT and redirect to frontend with token and user info
     const user = req.user;
     const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-    // Pass token and user info as query params (for demo)
+    // Pass token and user info as query params
     const redirectUrl = `${FRONTEND_URL}/login?token=${encodeURIComponent(token)}&user=${encodeURIComponent(JSON.stringify({ id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email }))}`;
     res.redirect(redirectUrl);
   }
@@ -305,14 +303,12 @@ db.run(`CREATE TABLE IF NOT EXISTS order_items (
 )`);
 
 // --- Cart Endpoints ---
-// Get current user's cart
 app.get('/api/cart', authenticateToken, (req, res) => {
   db.all('SELECT perfumeId, quantity FROM cart WHERE userId = ?', [req.user.id], (err, rows) => {
     if (err) return res.status(500).json({ error: 'Database error' });
     res.json(rows);
   });
 });
-// Add/update/remove item in cart
 app.post('/api/cart', authenticateToken, (req, res) => {
   const { perfumeId, quantity } = req.body;
   if (!perfumeId || quantity == null) return res.status(400).json({ error: 'perfumeId and quantity required' });
@@ -349,23 +345,30 @@ app.post('/api/checkout', authenticateToken, (req, res) => {
   });
 });
 
-// --- Order History ---
+// === FIX #1 START: Prevents server crash on empty orders ===
 app.get('/api/orders', authenticateToken, (req, res) => {
-  db.all('SELECT * FROM orders WHERE userId = ? ORDER BY createdAt DESC', [req.user.id], (err, orders) => {
-    if (err) return res.status(500).json({ error: 'Database error' });
-    if (!orders.length) return res.json([]);
-    // For each order, get items
-    const orderIds = orders.map(o => o.id);
-    db.all('SELECT * FROM order_items WHERE orderId IN (' + orderIds.map(() => '?').join(',') + ')', orderIds, (err, items) => {
-      if (err) return res.status(500).json({ error: 'Database error' });
-      const ordersWithItems = orders.map(order => ({
-        ...order,
-        items: items.filter(i => i.orderId === order.id)
-      }));
-      res.json(ordersWithItems);
-    });
-  });
+  db.all('SELECT * FROM orders WHERE userId = ? ORDER BY createdAt DESC', [req.user.id], (err, orders) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    
+    // If there are no orders, return an empty array immediately.
+    if (!orders.length) {
+      return res.json([]);
+    }
+    
+    // Only fetch items if there are orders.
+    const orderIds = orders.map(o => o.id);
+    db.all('SELECT * FROM order_items WHERE orderId IN (' + orderIds.map(() => '?').join(',') + ')', orderIds, (err, items) => {
+      if (err) return res.status(500).json({ error: 'Database error' });
+      
+      const ordersWithItems = orders.map(order => ({
+        ...order,
+        items: items.filter(i => i.orderId === order.id)
+      }));
+      res.json(ordersWithItems);
+    });
+  });
 });
+// === FIX #1 END ===
 
 // --- Reviews Table ---
 db.run(`CREATE TABLE IF NOT EXISTS reviews (
@@ -436,11 +439,9 @@ db.run(`CREATE TABLE IF NOT EXISTS products (
 
 // Add missing columns if upgrading an old DB
 const productColumns = [
-  { name: 'originalPrice', type: 'REAL' },
-  { name: 'category', type: 'TEXT' },
-  { name: 'rating', type: 'REAL' },
-  { name: 'isNew', type: 'INTEGER' },
-  { name: 'isBestseller', type: 'INTEGER' }
+.
+.
+.
 ];
 db.all("PRAGMA table_info(products)", (err, columns) => {
   if (err) return;
@@ -453,14 +454,12 @@ db.all("PRAGMA table_info(products)", (err, columns) => {
 });
 
 // --- Products Endpoints ---
-// Get all products
 app.get('/api/products', (req, res) => {
   db.all('SELECT * FROM products', (err, rows) => {
     if (err) return res.status(500).json({ error: 'Database error' });
     res.json(rows);
   });
 });
-// Add a product (admin only)
 app.post('/api/products', authenticateAdmin, (req, res) => {
   const { name, price, originalPrice, image, description, category, rating, isNew, isBestseller } = req.body;
   if (!name || !price) return res.status(400).json({ error: 'Name and price required' });
@@ -473,7 +472,6 @@ app.post('/api/products', authenticateAdmin, (req, res) => {
     }
   );
 });
-// Update a product (admin only)
 app.put('/api/products/:id', authenticateAdmin, (req, res) => {
   const { name, price, originalPrice, image, description, category, rating, isNew, isBestseller } = req.body;
   db.run(
@@ -485,7 +483,6 @@ app.put('/api/products/:id', authenticateAdmin, (req, res) => {
     }
   );
 });
-// Delete a product (admin only)
 app.delete('/api/products/:id', authenticateAdmin, (req, res) => {
   db.run('DELETE FROM products WHERE id = ?', [req.params.id], function (err) {
     if (err) return res.status(500).json({ error: 'Database error' });
@@ -518,22 +515,30 @@ app.delete('/api/admin/users/:id', authenticateAdmin, (req, res) => {
   });
 });
 
-// --- Admin: List all orders with user info and items ---
+// === FIX #1 START: Prevents server crash on empty orders ===
 app.get('/api/admin/orders', authenticateAdmin, (req, res) => {
-  db.all('SELECT o.*, u.firstName, u.lastName, u.email FROM orders o JOIN users u ON o.userId = u.id ORDER BY o.createdAt DESC', (err, orders) => {
-    if (err) return res.status(500).json({ error: 'Database error' });
-    if (!orders.length) return res.json([]);
-    const orderIds = orders.map(o => o.id);
-    db.all('SELECT * FROM order_items WHERE orderId IN (' + orderIds.map(() => '?').join(',') + ')', orderIds, (err, items) => {
-      if (err) return res.status(500).json({ error: 'Database error' });
-      const ordersWithItems = orders.map(order => ({
-        ...order,
-        items: items.filter(i => i.orderId === order.id)
-      }));
-      res.json(ordersWithItems);
-    });
-  });
+  db.all('SELECT o.*, u.firstName, u.lastName, u.email FROM orders o JOIN users u ON o.userId = u.id ORDER BY o.createdAt DESC', (err, orders) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+
+    // If there are no orders, return an empty array immediately.
+    if (!orders.length) {
+      return res.json([]);
+    }
+
+    // Only fetch items if there are orders.
+    const orderIds = orders.map(o => o.id);
+    db.all('SELECT * FROM order_items WHERE orderId IN (' + orderIds.map(() => '?').join(',') + ')', orderIds, (err, items) => {
+      if (err) return res.status(500).json({ error: 'Database error' });
+
+      const ordersWithItems = orders.map(order => ({
+        ...order,
+        items: items.filter(i => i.orderId === order.id)
+      }));
+      res.json(ordersWithItems);
+    });
+  });
 });
+// === FIX #1 END ===
 
 // --- Admin: Update an order ---
 app.put('/api/admin/orders/:id', authenticateAdmin, (req, res) => {
@@ -556,23 +561,13 @@ app.delete('/api/admin/orders/:id', authenticateAdmin, (req, res) => {
 });
 
 
-// =================================================================
-// --- CORRECTED SECTION START ---
-// This part serves your React application and handles client-side routing.
-// =================================================================
-
-// 1. Serve static assets from the React build folder
+// === FIX #2 START: Fixes "Not Found" error for /admin page ===
+// Serves the React app and handles client-side routing.
 app.use(express.static(path.join(__dirname, '../frontend/dist')));
-
-// 2. The "catch-all" handler: for any request that doesn't
-// match one of the API routes above, send back React's index.html file.
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
-
-// =================================================================
-// --- CORRECTED SECTION END ---
-// =================================================================
+// === FIX #2 END ===
 
 
 app.listen(PORT, () => {
