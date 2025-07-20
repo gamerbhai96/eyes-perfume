@@ -18,6 +18,7 @@ import AdminJSExpress from '@adminjs/express';
 import { Database, Resource } from '@adminjs/sql';
 
 dotenv.config();
+console.log("[Step 1] Initializing application...");
 
 // --- App and Variable Initialization ---
 const app = express();
@@ -57,9 +58,9 @@ function generateTempToken(email) {
 
 // --- Main Server Function ---
 const startServer = async () => {
+    console.log("[Step 2] startServer function called.");
     
     // --- 1. MIDDLEWARE SETUP ---
-    // This must come before any routes.
     app.use(cors({
         origin: [
             'https://eyes-perfume-wl8p.vercel.app',
@@ -75,9 +76,11 @@ const startServer = async () => {
         saveUninitialized: true,
     }));
     app.use(passport.initialize());
+    console.log("[Step 3] Middleware configured.");
 
     // --- 2. ADMINJS SETUP ---
     try {
+        console.log("[Step 4] Attempting to start AdminJS...");
         AdminJS.registerAdapter({ Database, Resource });
         const db_admin = new Database('sqlite3', {
             connectionString: path.join(__dirname, 'users.db'),
@@ -112,9 +115,9 @@ const startServer = async () => {
             cookiePassword: 'a-very-secret-and-long-password-for-cookies-change-me',
         });
         app.use(adminJs.options.rootPath, adminRouter);
-        console.log('AdminJS setup complete.');
+        console.log("[Step 5] AdminJS setup complete and router attached.");
     } catch (error) {
-        console.error("Failed to start AdminJS:", error);
+        console.error("[ERROR] Failed to start AdminJS:", error);
     }
     
     // --- 3. DATABASE TABLE CREATION ---
@@ -127,13 +130,16 @@ const startServer = async () => {
     const productColumns = [ { name: 'originalPrice', type: 'REAL' }, { name: 'category', type: 'TEXT' }, { name: 'rating', type: 'REAL' }, { name: 'isNew', type: 'INTEGER' }, { name: 'isBestseller', type: 'INTEGER' }];
     db.all("PRAGMA table_info(products)", (err, columns) => {
         if (err) return;
-        const colNames = columns.map(col => col.name);
-        productColumns.forEach(col => {
-            if (!colNames.includes(col.name)) {
-                db.run(`ALTER TABLE products ADD COLUMN ${col.name} ${col.type}`);
-            }
-        });
+        if (columns) {
+            const colNames = columns.map(col => col.name);
+            productColumns.forEach(col => {
+                if (!colNames.includes(col.name)) {
+                    db.run(`ALTER TABLE products ADD COLUMN ${col.name} ${col.type}`);
+                }
+            });
+        }
     });
+    console.log("[Step 6] Database tables configured.");
 
     // --- 4. PASSPORT.JS SETUP ---
     passport.use(new GoogleStrategy({
@@ -415,10 +421,11 @@ const startServer = async () => {
             });
         });
     });
+    console.log("[Step 7] API routes configured.");
 
     // --- 6. START THE SERVER ---
     app.listen(PORT, () => {
-        console.log(`Server is running on port ${PORT}`);
+        console.log(`[Step 8] SUCCESS: Server is listening on port ${PORT}.`);
         console.log(`AdminJS should be available at /admin`);
     });
 };
