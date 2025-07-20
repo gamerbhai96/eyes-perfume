@@ -468,13 +468,13 @@ app.delete('/api/admin/orders/:id', authenticateAdmin, (req, res) => {
     });
 });
 
+
 // --- This is the final, correct code for serving your React app ---
-const frontendDistPath = path.resolve(__dirname, '..', 'frontend', 'dist');
-app.use(express.static(frontendDistPath));
+// It copies the built frontend into a 'public' folder inside the backend.
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('*', (req, res) => {
-  const indexPath = path.resolve(__dirname, '..', 'frontend', 'dist', 'index.html');
-  res.sendFile(indexPath);
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 
