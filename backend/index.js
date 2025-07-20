@@ -18,7 +18,7 @@ import AdminJS from 'adminjs';
 import AdminJSExpress from '@adminjs/express';
 import { Database, Resource } from '@adminjs/sql';
 
-// --- THIS IS CRITICAL: Register the adapter right after imports ---
+// This is the critical step that teaches AdminJS how to handle SQL databases
 AdminJS.registerAdapter({ Database, Resource });
 
 dotenv.config();
@@ -28,7 +28,7 @@ const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const db = new sqlite3.Database(path.join(__dirname, 'users.db'));
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 10000;
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'GOOGLE_CLIENT_ID_HERE';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || 'GOOGLE_CLIENT_SECRET_HERE';
@@ -38,8 +38,8 @@ const otpStore = {};
 // Create a session store that uses SQLite
 const SQLiteStore = connectSqlite3(session);
 const store = new SQLiteStore({
-    db: 'sessions.db', // The file to store sessions in
-    dir: __dirname, // The directory for the session database
+    db: 'sessions.db',
+    dir: __dirname,
 });
 
 const transporter = nodemailer.createTransport({
@@ -80,41 +80,38 @@ const startServer = async () => {
         credentials: true
     }));
     app.use(express.json());
-    // Use the persistent SQLite session store to fix the MemoryStore warning
     app.use(session({
         store: store,
         secret: 'a-very-secret-and-long-password-for-sessions-change-me',
         resave: false,
-        saveUninitialized: false, // Recommended for login sessions
+        saveUninitialized: false,
         cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 } // 7 days
     }));
     app.use(passport.initialize());
-    app.use(passport.session()); // Enable persistent login sessions
+    app.use(passport.session());
 
     // --- 2. ADMINJS SETUP ---
     try {
+        // Explicitly wrap the database connection for AdminJS.
+        // This ensures the SQL adapter recognizes it.
+        const adminJsDb = new Database(db);
+
         const adminJs = new AdminJS({
             branding: { companyName: 'EYES Perfume', softwareBrothers: false },
-            // Pass your database connection directly. Because the adapter is registered,
-            // AdminJS will know how to handle this 'db' object.
+            // Pass the wrapped database object to each resource.
             resources: [
-                { resource: db,
-                  options: {
-                    // You can specify properties for each resource (table) here
-                    // For example, for the users table:
-                    id: 'users',
-                    properties: { passwordHash: { isVisible: false } }
-                  }
-                },
-                // Add other tables from the same database
-                { resource: db, options: { id: 'products' } },
-                { resource: db, options: { id: 'orders' } },
-                { resource: db, options: { id: 'reviews' } },
-                { resource: db, options: { id: 'cart' } },
-                { resource: db, options: { id: 'order_items' } },
+              { resource: { table: 'users', database: adminJsDb },
+                options: { properties: { passwordHash: { isVisible: false } } }
+              },
+              { resource: { table: 'products', database: adminJsDb } },
+              { resource: { table: 'orders', database: adminJsDb } },
+              { resource: { table: 'reviews', database: adminJsDb } },
+              { resource: { table: 'cart', database: adminJsDb } },
+              { resource: { table: 'order_items', database: adminJsDb } },
             ],
             rootPath: '/admin',
         });
+
         const adminRouter = AdminJSExpress.buildAuthenticatedRouter(adminJs, {
             authenticate: async (email, password) => {
                 const user = await new Promise((resolve, reject) => {
@@ -132,8 +129,10 @@ const startServer = async () => {
             cookieName: 'admin-session',
             cookiePassword: 'a-very-secret-and-long-password-for-cookies-change-me',
         });
+
         app.use(adminJs.options.rootPath, adminRouter);
         console.log('AdminJS setup complete.');
+
     } catch (error) {
         console.error("Failed to start AdminJS:", error);
     }
@@ -192,7 +191,7 @@ const startServer = async () => {
         });
     }));
 
-    // --- 5. API ROUTES --- (Your existing routes remain unchanged)
+    // --- 5. API ROUTES ---
     function authenticateToken(req, res, next) {
         const authHeader = req.headers['authorization'];
         const token = authHeader && authHeader.split(' ')[1];
@@ -213,7 +212,7 @@ const startServer = async () => {
             });
         });
     }
-
+    
     app.get('/', (req, res) => res.send('Perfume backend running'));
 
     app.post('/api/signup', async (req, res) => {
@@ -267,7 +266,7 @@ const startServer = async () => {
             res.json({ token, user: dbUser });
         });
     });
-
+    
     app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
     app.get('/auth/google/callback', passport.authenticate('google', {
         failureRedirect: `${FRONTEND_URL}/login`
@@ -301,7 +300,158 @@ const startServer = async () => {
         });
     });
 
-    // ... (Your other API routes for cart, checkout, reviews, products, etc. remain here)
+    app.get('/api/cart', authenticateToken, (req, res) => {
+        db.all('SELECT perfumeId, quantity FROM cart WHERE userId = ?', [req.user.id], (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.json(rows);
+        });
+    });
+
+    app.post('/api/cart', authenticateToken, (req, res) => {
+        const { perfumeId, quantity } = req.body;
+        if (!perfumeId || quantity == null) return res.status(400).json({ error: 'perfumeId and quantity required' });
+        if (quantity <= 0) {
+            db.run('DELETE FROM cart WHERE userId = ? AND perfumeId = ?', [req.user.id, perfumeId], function (err) {
+                if (err) return res.status(500).json({ error: 'Database error' });
+                res.json({ success: true });
+            });
+        } else {
+            db.run('INSERT OR REPLACE INTO cart (userId, perfumeId, quantity) VALUES (?, ?, ?)', [req.user.id, perfumeId, quantity], function (err) {
+                if (err) return res.status(500).json({ error: 'Database error' });
+                res.json({ success: true });
+            });
+        }
+    });
+
+    app.post('/api/checkout', authenticateToken, (req, res) => {
+        const { name, address, phone } = req.body;
+        db.all('SELECT perfumeId, quantity FROM cart WHERE userId = ?', [req.user.id], (err, items) => {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            if (!items.length) return res.status(400).json({ error: 'Cart is empty' });
+            db.run('INSERT INTO orders (userId, createdAt, name, address, phone) VALUES (?, ?, ?, ?, ?)', [req.user.id, new Date().toISOString(), name || '', address || '', phone || ''], function (err) {
+                if (err) return res.status(500).json({ error: 'Database error' });
+                const orderId = this.lastID;
+                const stmt = db.prepare('INSERT INTO order_items (orderId, perfumeId, quantity) VALUES (?, ?, ?)');
+                items.forEach(item => stmt.run(orderId, item.perfumeId, item.quantity));
+                stmt.finalize();
+                db.run('DELETE FROM cart WHERE userId = ?', [req.user.id]);
+                res.json({ success: true, orderId });
+            });
+        });
+    });
+
+    app.get('/api/orders', authenticateToken, (req, res) => {
+        db.all('SELECT * FROM orders WHERE userId = ? ORDER BY createdAt DESC', [req.user.id], (err, orders) => {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            if (!orders.length) return res.json([]);
+            const orderIds = orders.map(o => o.id);
+            db.all(`SELECT * FROM order_items WHERE orderId IN (${orderIds.map(() => '?').join(',')})`, orderIds, (err, items) => {
+                if (err) return res.status(500).json({ error: 'Database error' });
+                const ordersWithItems = orders.map(order => ({ ...order, items: items.filter(i => i.orderId === order.id) }));
+                res.json(ordersWithItems);
+            });
+        });
+    });
+
+    app.post('/api/reviews', authenticateToken, (req, res) => {
+        const { perfumeId, rating, comment } = req.body;
+        if (!perfumeId || !rating) return res.status(400).json({ error: 'perfumeId and rating required' });
+        db.run('INSERT INTO reviews (perfumeId, userId, rating, comment, createdAt) VALUES (?, ?, ?, ?, ?)', [perfumeId, req.user.id, rating, comment || '', new Date().toISOString()], function (err) {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.json({ success: true, reviewId: this.lastID });
+        });
+    });
+
+    app.get('/api/reviews/:perfumeId', (req, res) => {
+        db.all('SELECT r.*, u.firstName, u.lastName FROM reviews r JOIN users u ON r.userId = u.id WHERE r.perfumeId = ? ORDER BY r.createdAt DESC', [req.params.perfumeId], (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.json(rows);
+        });
+    });
+
+    app.get('/api/products', (req, res) => {
+        db.all('SELECT * FROM products', (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.json(rows);
+        });
+    });
+
+    app.post('/api/products', authenticateAdmin, (req, res) => {
+        const { name, price, originalPrice, image, description, category, rating, isNew, isBestseller } = req.body;
+        if (!name || !price) return res.status(400).json({ error: 'Name and price required' });
+        db.run('INSERT INTO products (name, price, originalPrice, image, description, category, rating, isNew, isBestseller) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [name, price, originalPrice, image || '', description || '', category || '', rating || null, isNew ? 1 : 0, isBestseller ? 1 : 0], function (err) {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.json({ id: this.lastID, ...req.body });
+        });
+    });
+
+    app.put('/api/products/:id', authenticateAdmin, (req, res) => {
+        const { name, price, originalPrice, image, description, category, rating, isNew, isBestseller } = req.body;
+        db.run('UPDATE products SET name = ?, price = ?, originalPrice = ?, image = ?, description = ?, category = ?, rating = ?, isNew = ?, isBestseller = ? WHERE id = ?', [name, price, originalPrice, image, description, category, rating, isNew ? 1 : 0, isBestseller ? 1 : 0, req.params.id], function (err) {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.json({ success: true });
+        });
+    });
+
+    app.delete('/api/products/:id', authenticateAdmin, (req, res) => {
+        db.run('DELETE FROM products WHERE id = ?', [req.params.id], function (err) {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.json({ success: true });
+        });
+    });
+
+    app.get('/api/admin/users', authenticateAdmin, (req, res) => {
+        db.all('SELECT id, firstName, lastName, email, role FROM users', (err, users) => {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.json(users);
+        });
+    });
+
+    app.put('/api/admin/users/:id', authenticateAdmin, (req, res) => {
+        const { firstName, lastName, email, role } = req.body;
+        db.run('UPDATE users SET firstName = ?, lastName = ?, email = ?, role = ? WHERE id = ?', [firstName, lastName, email, role, req.params.id], function (err) {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.json({ success: true });
+        });
+    });
+
+    app.delete('/api/admin/users/:id', authenticateAdmin, (req, res) => {
+        db.run('DELETE FROM users WHERE id = ?', [req.params.id], function (err) {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.json({ success: true });
+        });
+    });
+
+    app.get('/api/admin/orders', authenticateAdmin, (req, res) => {
+        db.all('SELECT o.*, u.firstName, u.lastName, u.email FROM orders o JOIN users u ON o.userId = u.id ORDER BY o.createdAt DESC', (err, orders) => {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            if (!orders.length) return res.json([]);
+            const orderIds = orders.map(o => o.id);
+            db.all(`SELECT * FROM order_items WHERE orderId IN (${orderIds.map(() => '?').join(',')})`, orderIds, (err, items) => {
+                if (err) return res.status(500).json({ error: 'Database error' });
+                const ordersWithItems = orders.map(order => ({ ...order, items: items.filter(i => i.orderId === order.id) }));
+                res.json(ordersWithItems);
+            });
+        });
+    });
+
+    app.put('/api/admin/orders/:id', authenticateAdmin, (req, res) => {
+        const { name, address, phone } = req.body;
+        db.run('UPDATE orders SET name = ?, address = ?, phone = ? WHERE id = ?', [name, address, phone, req.params.id], function (err) {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            res.json({ success: true });
+        });
+    });
+
+    app.delete('/api/admin/orders/:id', authenticateAdmin, (req, res) => {
+        db.run('DELETE FROM order_items WHERE orderId = ?', [req.params.id], function (err) {
+            if (err) return res.status(500).json({ error: 'Database error' });
+            db.run('DELETE FROM orders WHERE id = ?', [req.params.id], function (err2) {
+                if (err2) return res.status(500).json({ error: 'Database error' });
+                res.json({ success: true });
+            });
+        });
+    });
 
     // --- 6. START THE SERVER ---
     app.listen(PORT, () => {
