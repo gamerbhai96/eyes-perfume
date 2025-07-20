@@ -49,12 +49,12 @@ const startAdminJS = async () => {
 
         const adminJs = new AdminJS({
             resources: [
-                { resource: db_admin.table('users') },
-                { resource: db_admin.table('products') },
-                { resource: db_admin.table('orders') },
-                { resource: db_admin.table('reviews') },
-                { resource: db_admin.table('cart') },
-                { resource: db_admin.table('order_items') },
+                { resource: { table: 'users', database: db_admin } },
+                { resource: { table: 'products', database: db_admin } },
+                { resource: { table: 'orders', database: db_admin } },
+                { resource: { table: 'reviews', database: db_admin } },
+                { resource: { table: 'cart', database: db_admin } },
+                { resource: { table: 'order_items', database: db_admin } },
             ],
             rootPath: '/admin',
         });
