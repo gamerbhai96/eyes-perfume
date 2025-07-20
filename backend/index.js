@@ -18,7 +18,7 @@ import AdminJS from 'adminjs';
 import AdminJSExpress from '@adminjs/express';
 import { Database, Resource } from '@adminjs/sql';
 
-// This is the critical step that teaches AdminJS how to handle SQL databases
+// **ACTION 1:** Register the SQL adapter globally. This is essential.
 AdminJS.registerAdapter({ Database, Resource });
 
 dotenv.config();
@@ -35,12 +35,8 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || 'GOOGLE_CLIENT_
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const otpStore = {};
 
-// Create a session store that uses SQLite
 const SQLiteStore = connectSqlite3(session);
-const store = new SQLiteStore({
-    db: 'sessions.db',
-    dir: __dirname,
-});
+const store = new SQLiteStore({ db: 'sessions.db', dir: __dirname });
 
 const transporter = nodemailer.createTransport({
     service: 'gmail',
@@ -85,38 +81,34 @@ const startServer = async () => {
         secret: 'a-very-secret-and-long-password-for-sessions-change-me',
         resave: false,
         saveUninitialized: false,
-        cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 } // 7 days
+        cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 }
     }));
     app.use(passport.initialize());
     app.use(passport.session());
 
-    // --- 2. ADMINJS SETUP ---
+    // --- 2. ADMINJS SETUP (THE DEFINITIVE FIX) ---
     try {
-        // Explicitly wrap the database connection for AdminJS.
-        // This ensures the SQL adapter recognizes it.
-        const adminJsDb = new Database(db);
-
         const adminJs = new AdminJS({
-            branding: { companyName: 'EYES Perfume', softwareBrothers: false },
-            // Pass the wrapped database object to each resource.
-            resources: [
-              { resource: { table: 'users', database: adminJsDb },
-                options: { properties: { passwordHash: { isVisible: false } } }
-              },
-              { resource: { table: 'products', database: adminJsDb } },
-              { resource: { table: 'orders', database: adminJsDb } },
-              { resource: { table: 'reviews', database: adminJsDb } },
-              { resource: { table: 'cart', database: adminJsDb } },
-              { resource: { table: 'order_items', database: adminJsDb } },
-            ],
+            // **ACTION 2:** Explicitly register your database connection here.
+            databases: [db],
+            branding: { companyName: 'EYES Perfume' },
             rootPath: '/admin',
+            // **ACTION 3:** Reference the tables from the registered database.
+            resources: [
+                { resource: { table: 'users' }, options: { properties: { passwordHash: { isVisible: false } } } },
+                { resource: { table: 'products' } },
+                { resource: { table: 'orders' } },
+                { resource: { table: 'reviews' } },
+                { resource: { table: 'cart' } },
+                { resource: { table: 'order_items' } },
+            ],
         });
 
         const adminRouter = AdminJSExpress.buildAuthenticatedRouter(adminJs, {
             authenticate: async (email, password) => {
                 const user = await new Promise((resolve, reject) => {
                     db.get('SELECT * FROM users WHERE email = ?', [email], (err, row) => {
-                        if (err) reject(err);
+                        if (err) return reject(err);
                         resolve(row);
                     });
                 });
@@ -131,12 +123,11 @@ const startServer = async () => {
         });
 
         app.use(adminJs.options.rootPath, adminRouter);
-        console.log('AdminJS setup complete.');
-
+        console.log('✅ AdminJS setup complete. Panel should be available at /admin');
     } catch (error) {
-        console.error("Failed to start AdminJS:", error);
+        console.error("❌ Failed to start AdminJS:", error);
     }
-
+    
     // --- 3. DATABASE TABLE CREATION ---
     db.serialize(() => {
         db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, firstName TEXT NOT NULL, lastName TEXT NOT NULL, email TEXT NOT NULL UNIQUE, passwordHash TEXT NOT NULL, role TEXT DEFAULT 'user')`);
@@ -145,8 +136,8 @@ const startServer = async () => {
         db.run(`CREATE TABLE IF NOT EXISTS order_items (orderId INTEGER, perfumeId INTEGER, quantity INTEGER)`);
         db.run(`CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, perfumeId INTEGER, userId INTEGER, rating INTEGER, comment TEXT, createdAt TEXT)`);
         db.run(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price REAL NOT NULL, originalPrice REAL, image TEXT, description TEXT, category TEXT, rating REAL, isNew INTEGER, isBestseller INTEGER)`);
-
-        const productColumns = [ { name: 'originalPrice', type: 'REAL' }, { name: 'category', type: 'TEXT' }, { name: 'rating', type: 'REAL' }, { name: 'isNew', type: 'INTEGER' }, { name: 'isBestseller', 'type': 'INTEGER' }];
+    
+        const productColumns = [ { name: 'originalPrice', type: 'REAL' }, { name: 'category', type: 'TEXT' }, { name: 'rating', type: 'REAL' }, { name: 'isNew', type: 'INTEGER' }, { name: 'isBestseller', type: 'INTEGER' }];
         db.all("PRAGMA table_info(products)", (err, columns) => {
             if (err) return;
             if (columns) {
@@ -161,14 +152,9 @@ const startServer = async () => {
     });
 
     // --- 4. PASSPORT.JS SETUP ---
-    passport.serializeUser((user, done) => {
-        done(null, user.id);
-    });
-
+    passport.serializeUser((user, done) => { done(null, user.id); });
     passport.deserializeUser((id, done) => {
-        db.get('SELECT * FROM users WHERE id = ?', [id], (err, user) => {
-            done(err, user);
-        });
+        db.get('SELECT * FROM users WHERE id = ?', [id], (err, user) => { done(err, user); });
     });
 
     passport.use(new GoogleStrategy({
@@ -190,7 +176,7 @@ const startServer = async () => {
             });
         });
     }));
-
+    
     // --- 5. API ROUTES ---
     function authenticateToken(req, res, next) {
         const authHeader = req.headers['authorization'];
@@ -452,11 +438,10 @@ const startServer = async () => {
             });
         });
     });
-
+    
     // --- 6. START THE SERVER ---
     app.listen(PORT, () => {
-        console.log(`Server is running on port ${PORT}`);
-        console.log(`AdminJS should be available at http://localhost:${PORT}/admin`);
+        console.log(`🚀 Server is running on port ${PORT}`);
     });
 };
 
