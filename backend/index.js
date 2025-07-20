@@ -78,47 +78,49 @@ const startServer = async () => {
     }));
     app.use(passport.initialize());
 
-    // --- 2. ADMINJS SETUP ---
-    try {
-        // === THIS SECTION IS CORRECTED ===
-        const db_admin = new Database(sqlite3.Database, {
-            filename: path.join(__dirname, 'users.db'),
-        });
+// --- 2. ADMINJS SETUP ---
+try {
+    // 1. Register the adapter so AdminJS knows how to work with @adminjs/sql
+    AdminJS.registerAdapter({ Database, Resource });
 
-        const adminJs = new AdminJS({
-            branding: { companyName: 'EYES Perfume', softwareBrothers: false },
-            resources: [
-                { resource: { table: 'users', database: db_admin } },
-                { resource: { table: 'products', database: db_admin } },
-                { resource: { table: 'orders', database: db_admin } },
-                { resource: { table: 'reviews', database: db_admin } },
-                { resource: { table: 'cart', database: db_admin } },
-                { resource: { table: 'order_items', database: db_admin } },
-            ],
-            rootPath: '/admin',
-        });
-        const adminRouter = AdminJSExpress.buildAuthenticatedRouter(adminJs, {
-            authenticate: async (email, password) => {
-                const user = await new Promise((resolve, reject) => {
-                    db.get('SELECT * FROM users WHERE email = ?', [email], (err, row) => {
-                        if (err) reject(err);
-                        resolve(row);
-                    });
+    const adminJs = new AdminJS({
+        branding: { companyName: 'EYES Perfume', softwareBrothers: false },
+        // 2. Pass your existing database connection directly
+        resources: [
+            { resource: { table: 'users', database: db } },
+            { resource: { table: 'products', database: db } },
+            { resource: { table: 'orders', database: db } },
+            { resource: { table: 'reviews', database: db } },
+            { resource: { table: 'cart', database: db } },
+            { resource: { table: 'order_items', database: db } },
+        ],
+        rootPath: '/admin',
+    });
+
+    const adminRouter = AdminJSExpress.buildAuthenticatedRouter(adminJs, {
+        authenticate: async (email, password) => {
+            const user = await new Promise((resolve, reject) => {
+                db.get('SELECT * FROM users WHERE email = ?', [email], (err, row) => {
+                    if (err) reject(err);
+                    resolve(row);
                 });
-                if (user && user.role === 'admin') {
-                    const matched = await bcrypt.compare(password, user.passwordHash);
-                    if (matched) return user;
-                }
-                return false;
-            },
-            cookieName: 'admin-session',
-            cookiePassword: 'a-very-secret-and-long-password-for-cookies-change-me',
-        });
-        app.use(adminJs.options.rootPath, adminRouter);
-        console.log('AdminJS setup complete.');
-    } catch (error) {
-        console.error("Failed to start AdminJS:", error);
-    }
+            });
+            if (user && user.role === 'admin') {
+                const matched = await bcrypt.compare(password, user.passwordHash);
+                if (matched) return user;
+            }
+            return false;
+        },
+        cookieName: 'admin-session',
+        cookiePassword: 'a-very-secret-and-long-password-for-cookies-change-me',
+    });
+    
+    app.use(adminJs.options.rootPath, adminRouter);
+    console.log('AdminJS setup complete.');
+
+} catch (error) {
+    console.error("Failed to start AdminJS:", error);
+}
 
     // --- 3. DATABASE TABLE CREATION ---
     db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, firstName TEXT NOT NULL, lastName TEXT NOT NULL, email TEXT NOT NULL UNIQUE, passwordHash TEXT NOT NULL, role TEXT DEFAULT 'user')`);
