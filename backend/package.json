@@ -9,9 +9,9 @@
     "postinstall": "npm rebuild sqlite3"
   },
   "dependencies": {
-    "@adminjs/express": "^6.1.0",
-    "@adminjs/sql": "^6.1.1",
-    "adminjs": "^7.5.3",
+    "@adminjs/express": "^5.1.0",
+    "@adminjs/sql": "^3.0.1",
+    "adminjs": "^6.8.7",
     "bcrypt": "^5.1.0",
     "connect-sqlite3": "^0.9.15",
     "cors": "^2.8.5",
