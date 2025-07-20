@@ -17,7 +17,7 @@ import AdminJS from 'adminjs';
 import AdminJSExpress from '@adminjs/express';
 import { Database, Resource } from '@adminjs/sql';
 
-// === THIS IS THE FIX: Register the adapter globally ===
+// THIS IS THE FIX: Register the adapter globally right after imports
 AdminJS.registerAdapter({ Database, Resource });
 
 dotenv.config();
@@ -419,7 +419,7 @@ const startServer = async () => {
             });
         });
     });
-    
+
     // --- 6. START THE SERVER ---
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);
