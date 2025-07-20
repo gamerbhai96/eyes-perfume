@@ -17,8 +17,10 @@ import AdminJS from 'adminjs';
 import AdminJSExpress from '@adminjs/express';
 import { Database, Resource } from '@adminjs/sql';
 
+// THIS IS THE FIX: Register the adapter globally right after imports
+AdminJS.registerAdapter({ Database, Resource });
+
 dotenv.config();
-console.log("[Step 1] Initializing application...");
 
 // --- App and Variable Initialization ---
 const app = express();
@@ -58,7 +60,6 @@ function generateTempToken(email) {
 
 // --- Main Server Function ---
 const startServer = async () => {
-    console.log("[Step 2] startServer function called.");
     
     // --- 1. MIDDLEWARE SETUP ---
     app.use(cors({
@@ -76,12 +77,9 @@ const startServer = async () => {
         saveUninitialized: true,
     }));
     app.use(passport.initialize());
-    console.log("[Step 3] Middleware configured.");
 
     // --- 2. ADMINJS SETUP ---
     try {
-        console.log("[Step 4] Attempting to start AdminJS...");
-        AdminJS.registerAdapter({ Database, Resource });
         const db_admin = new Database('sqlite3', {
             connectionString: path.join(__dirname, 'users.db'),
         });
@@ -115,9 +113,9 @@ const startServer = async () => {
             cookiePassword: 'a-very-secret-and-long-password-for-cookies-change-me',
         });
         app.use(adminJs.options.rootPath, adminRouter);
-        console.log("[Step 5] AdminJS setup complete and router attached.");
+        console.log('AdminJS setup complete.');
     } catch (error) {
-        console.error("[ERROR] Failed to start AdminJS:", error);
+        console.error("Failed to start AdminJS:", error);
     }
     
     // --- 3. DATABASE TABLE CREATION ---
@@ -127,6 +125,7 @@ const startServer = async () => {
     db.run(`CREATE TABLE IF NOT EXISTS order_items (orderId INTEGER, perfumeId INTEGER, quantity INTEGER)`);
     db.run(`CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, perfumeId INTEGER, userId INTEGER, rating INTEGER, comment TEXT, createdAt TEXT)`);
     db.run(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price REAL NOT NULL, originalPrice REAL, image TEXT, description TEXT, category TEXT, rating REAL, isNew INTEGER, isBestseller INTEGER)`);
+    
     const productColumns = [ { name: 'originalPrice', type: 'REAL' }, { name: 'category', type: 'TEXT' }, { name: 'rating', type: 'REAL' }, { name: 'isNew', type: 'INTEGER' }, { name: 'isBestseller', type: 'INTEGER' }];
     db.all("PRAGMA table_info(products)", (err, columns) => {
         if (err) return;
@@ -139,7 +138,6 @@ const startServer = async () => {
             });
         }
     });
-    console.log("[Step 6] Database tables configured.");
 
     // --- 4. PASSPORT.JS SETUP ---
     passport.use(new GoogleStrategy({
@@ -421,11 +419,10 @@ const startServer = async () => {
             });
         });
     });
-    console.log("[Step 7] API routes configured.");
 
     // --- 6. START THE SERVER ---
     app.listen(PORT, () => {
-        console.log(`[Step 8] SUCCESS: Server is listening on port ${PORT}.`);
+        console.log(`Server is running on port ${PORT}`);
         console.log(`AdminJS should be available at /admin`);
     });
 };
