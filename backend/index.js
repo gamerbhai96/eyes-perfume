@@ -10,7 +10,11 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs from 'fs';
+
+// --- AdminJS Imports ---
+import AdminJS from 'adminjs';
+import AdminJSExpress from '@adminjs/express';
+import { Database, Resource } from '@adminjs/sql';
 
 dotenv.config();
 
@@ -33,6 +37,37 @@ const transporter = nodemailer.createTransport({
         pass: process.env.EMAIL_PASS,
     },
 });
+
+// --- This function sets up and launches AdminJS ---
+const startAdminJS = async () => {
+    try {
+        AdminJS.registerAdapter({ Database, Resource });
+
+        const db_admin = await new Database('sqlite3', {
+            connectionString: path.join(__dirname, 'users.db'),
+        });
+
+        const adminJs = new AdminJS({
+            resources: [
+                { resource: db_admin.table('users') },
+                { resource: db_admin.table('products') },
+                { resource: db_admin.table('orders') },
+                { resource: db_admin.table('reviews') },
+                { resource: db_admin.table('cart') },
+                { resource: db_admin.table('order_items') },
+            ],
+            rootPath: '/admin',
+        });
+
+        const adminRouter = AdminJSExpress.buildRouter(adminJs);
+        app.use(adminJs.options.rootPath, adminRouter);
+        console.log('AdminJS is running at /admin');
+    } catch (error) {
+        console.error("Failed to start AdminJS:", error);
+    }
+};
+
+startAdminJS();
 
 function sendOtpEmail(email, otp) {
     return transporter.sendMail({
@@ -61,15 +96,15 @@ app.use(cors({
 }));
 app.use(express.json());
 
-db.run(`CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  firstName TEXT NOT NULL,
-  lastName TEXT NOT NULL,
-  email TEXT NOT NULL UNIQUE,
-  passwordHash TEXT NOT NULL,
-  role TEXT DEFAULT 'user'
-)`);
+// --- Database Table Creation ---
+db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, firstName TEXT NOT NULL, lastName TEXT NOT NULL, email TEXT NOT NULL UNIQUE, passwordHash TEXT NOT NULL, role TEXT DEFAULT 'user')`);
+db.run(`CREATE TABLE IF NOT EXISTS cart (userId INTEGER, perfumeId INTEGER, quantity INTEGER, PRIMARY KEY (userId, perfumeId))`);
+db.run(`CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, userId INTEGER, createdAt TEXT, name TEXT, address TEXT, phone TEXT)`);
+db.run(`CREATE TABLE IF NOT EXISTS order_items (orderId INTEGER, perfumeId INTEGER, quantity INTEGER)`);
+db.run(`CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, perfumeId INTEGER, userId INTEGER, rating INTEGER, comment TEXT, createdAt TEXT)`);
+db.run(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price REAL NOT NULL, originalPrice REAL, image TEXT, description TEXT, category TEXT, rating REAL, isNew INTEGER, isBestseller INTEGER)`);
 
+// --- API and Auth Routes ---
 app.get('/', (req, res) => {
     res.send('Perfume backend running');
 });
@@ -94,18 +129,8 @@ app.post('/api/signup', async (req, res) => {
                     if (err) return res.status(500).json({ error: 'Failed to create user.' });
                     const otp = generateOtp();
                     const tempToken = generateTempToken(email);
-                    otpStore[email] = {
-                        otp,
-                        expires: Date.now() + 5 * 60 * 1000,
-                        tempToken,
-                        user: { id: this.lastID, firstName, lastName, email },
-                        passwordHash,
-                    };
-                    sendOtpEmail(email, otp).then(() => {
-                        res.json({ otpRequired: true, tempToken });
-                    }).catch(() => {
-                        res.status(500).json({ error: 'Failed to send OTP email.' });
-                    });
+                    otpStore[email] = { otp, expires: Date.now() + 5 * 60 * 1000, tempToken, user: { id: this.lastID, firstName, lastName, email }, passwordHash, };
+                    sendOtpEmail(email, otp).then(() => res.json({ otpRequired: true, tempToken })).catch(() => res.status(500).json({ error: 'Failed to send OTP email.' }));
                 }
             );
         } catch (e) {
@@ -122,40 +147,24 @@ app.post('/api/login', (req, res) => {
     db.get('SELECT * FROM users WHERE email = ?', [email], async (err, user) => {
         if (err) return res.status(500).json({ error: 'Database error.' });
         if (!user) return res.status(400).json({ error: 'Invalid email or password.' });
-
         const match = await bcrypt.compare(password, user.passwordHash);
         if (!match) return res.status(400).json({ error: 'Invalid email or password.' });
-
         const otp = generateOtp();
         const tempToken = generateTempToken(email);
-        otpStore[email] = {
-            otp,
-            expires: Date.now() + 5 * 60 * 1000,
-            tempToken,
-            user: { id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email },
-            passwordHash: user.passwordHash,
-        };
-        sendOtpEmail(email, otp).then(() => {
-            res.json({ otpRequired: true, tempToken });
-        }).catch(() => {
-            res.status(500).json({ error: 'Failed to send OTP email.' });
-        });
+        otpStore[email] = { otp, expires: Date.now() + 5 * 60 * 1000, tempToken, user: { id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email }, passwordHash: user.passwordHash, };
+        sendOtpEmail(email, otp).then(() => res.json({ otpRequired: true, tempToken })).catch(() => res.status(500).json({ error: 'Failed to send OTP email.' }));
     });
 });
 
 app.post('/api/verify-otp', (req, res) => {
     const { email, otp, tempToken } = req.body;
     const entry = otpStore[email];
-    if (!entry || entry.tempToken !== tempToken) {
-        return res.status(400).json({ error: 'Invalid or expired OTP session.' });
-    }
+    if (!entry || entry.tempToken !== tempToken) return res.status(400).json({ error: 'Invalid or expired OTP session.' });
     if (Date.now() > entry.expires) {
         delete otpStore[email];
         return res.status(400).json({ error: 'OTP expired.' });
     }
-    if (entry.otp !== otp) {
-        return res.status(400).json({ error: 'Invalid OTP.' });
-    }
+    if (entry.otp !== otp) return res.status(400).json({ error: 'Invalid OTP.' });
     const { user } = entry;
     db.get('SELECT id, firstName, lastName, email, role FROM users WHERE id = ?', [user.id], (err, dbUser) => {
         if (err || !dbUser) {
@@ -177,37 +186,25 @@ passport.use(new GoogleStrategy({
     if (!email) return done(null, false, { message: 'No email from Google' });
     db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
         if (err) return done(err);
-        if (user) {
-            return done(null, user);
-        } else {
-            db.run(
-                'INSERT INTO users (firstName, lastName, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)',
-                [profile.name.givenName || '', profile.name.familyName || '', email, '', 'user'],
-                function (err) {
-                    if (err) return done(err);
-                    db.get('SELECT * FROM users WHERE id = ?', [this.lastID], (err, newUser) => {
-                        if (err) return done(err);
-                        done(null, newUser);
-                    });
-                }
-            );
-        }
+        if (user) return done(null, user);
+        db.run('INSERT INTO users (firstName, lastName, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)', [profile.name.givenName || '', profile.name.familyName || '', email, '', 'user'], function (err) {
+            if (err) return done(err);
+            db.get('SELECT * FROM users WHERE id = ?', [this.lastID], (err, newUser) => {
+                if (err) return done(err);
+                done(null, newUser);
+            });
+        });
     });
 }));
 
 app.use(passport.initialize());
-
 app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
-
-app.get('/auth/google/callback',
-    passport.authenticate('google', { session: false, failureRedirect: '/login' }),
-    (req, res) => {
-        const user = req.user;
-        const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-        const redirectUrl = `${FRONTEND_URL}/login?token=${encodeURIComponent(token)}&user=${encodeURIComponent(JSON.stringify(user))}`;
-        res.redirect(redirectUrl);
-    }
-);
+app.get('/auth/google/callback', passport.authenticate('google', { session: false, failureRedirect: '/login' }), (req, res) => {
+    const user = req.user;
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    const redirectUrl = `${FRONTEND_URL}/login?token=${encodeURIComponent(token)}&user=${encodeURIComponent(JSON.stringify(user))}`;
+    res.redirect(redirectUrl);
+});
 
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
@@ -259,10 +256,6 @@ app.post('/api/profile', authenticateToken, async (req, res) => {
     });
 });
 
-db.run(`CREATE TABLE IF NOT EXISTS cart (userId INTEGER, perfumeId INTEGER, quantity INTEGER, PRIMARY KEY (userId, perfumeId))`);
-db.run(`CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, userId INTEGER, createdAt TEXT, name TEXT, address TEXT, phone TEXT)`);
-db.run(`CREATE TABLE IF NOT EXISTS order_items (orderId INTEGER, perfumeId INTEGER, quantity INTEGER)`);
-
 app.get('/api/cart', authenticateToken, (req, res) => {
     db.all('SELECT perfumeId, quantity FROM cart WHERE userId = ?', [req.user.id], (err, rows) => {
         if (err) return res.status(500).json({ error: 'Database error' });
@@ -307,32 +300,22 @@ app.get('/api/orders', authenticateToken, (req, res) => {
     db.all('SELECT * FROM orders WHERE userId = ? ORDER BY createdAt DESC', [req.user.id], (err, orders) => {
         if (err) return res.status(500).json({ error: 'Database error' });
         if (!orders.length) return res.json([]);
-
         const orderIds = orders.map(o => o.id);
         db.all(`SELECT * FROM order_items WHERE orderId IN (${orderIds.map(() => '?').join(',')})`, orderIds, (err, items) => {
             if (err) return res.status(500).json({ error: 'Database error' });
-            const ordersWithItems = orders.map(order => ({
-                ...order,
-                items: items.filter(i => i.orderId === order.id)
-            }));
+            const ordersWithItems = orders.map(order => ({ ...order, items: items.filter(i => i.orderId === order.id) }));
             res.json(ordersWithItems);
         });
     });
 });
 
-db.run(`CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, perfumeId INTEGER, userId INTEGER, rating INTEGER, comment TEXT, createdAt TEXT)`);
-
 app.post('/api/reviews', authenticateToken, (req, res) => {
     const { perfumeId, rating, comment } = req.body;
     if (!perfumeId || !rating) return res.status(400).json({ error: 'perfumeId and rating required' });
-    db.run(
-        'INSERT INTO reviews (perfumeId, userId, rating, comment, createdAt) VALUES (?, ?, ?, ?, ?)',
-        [perfumeId, req.user.id, rating, comment || '', new Date().toISOString()],
-        function (err) {
-            if (err) return res.status(500).json({ error: 'Database error' });
-            res.json({ success: true, reviewId: this.lastID });
-        }
-    );
+    db.run('INSERT INTO reviews (perfumeId, userId, rating, comment, createdAt) VALUES (?, ?, ?, ?, ?)', [perfumeId, req.user.id, rating, comment || '', new Date().toISOString()], function (err) {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json({ success: true, reviewId: this.lastID });
+    });
 });
 
 app.get('/api/reviews/:perfumeId', (req, res) => {
@@ -342,26 +325,7 @@ app.get('/api/reviews/:perfumeId', (req, res) => {
     });
 });
 
-db.all("PRAGMA table_info(users)", (err, columns) => {
-    if (err) return;
-    if (!columns.some(col => col.name === 'role')) {
-        db.run("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'");
-        db.get('SELECT id FROM users ORDER BY id ASC LIMIT 1', (err, row) => {
-            if (row) db.run('UPDATE users SET role = ? WHERE id = ?', ['admin', row.id]);
-        });
-    }
-});
-
-db.run(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price REAL NOT NULL, originalPrice REAL, image TEXT, description TEXT, category TEXT, rating REAL, isNew INTEGER, isBestseller INTEGER)`);
-
-const productColumns = [
-    { name: 'originalPrice', type: 'REAL' },
-    { name: 'category', type: 'TEXT' },
-    { name: 'rating', type: 'REAL' },
-    { name: 'isNew', type: 'INTEGER' },
-    { name: 'isBestseller', type: 'INTEGER' }
-];
-
+const productColumns = [ { name: 'originalPrice', type: 'REAL' }, { name: 'category', type: 'TEXT' }, { name: 'rating', type: 'REAL' }, { name: 'isNew', type: 'INTEGER' }, { name: 'isBestseller', type: 'INTEGER' }];
 db.all("PRAGMA table_info(products)", (err, columns) => {
     if (err) return;
     const colNames = columns.map(col => col.name);
@@ -437,14 +401,10 @@ app.get('/api/admin/orders', authenticateAdmin, (req, res) => {
     db.all('SELECT o.*, u.firstName, u.lastName, u.email FROM orders o JOIN users u ON o.userId = u.id ORDER BY o.createdAt DESC', (err, orders) => {
         if (err) return res.status(500).json({ error: 'Database error' });
         if (!orders.length) return res.json([]);
-
         const orderIds = orders.map(o => o.id);
         db.all(`SELECT * FROM order_items WHERE orderId IN (${orderIds.map(() => '?').join(',')})`, orderIds, (err, items) => {
             if (err) return res.status(500).json({ error: 'Database error' });
-            const ordersWithItems = orders.map(order => ({
-                ...order,
-                items: items.filter(i => i.orderId === order.id)
-            }));
+            const ordersWithItems = orders.map(order => ({ ...order, items: items.filter(i => i.orderId === order.id) }));
             res.json(ordersWithItems);
         });
     });
@@ -468,16 +428,7 @@ app.delete('/api/admin/orders/:id', authenticateAdmin, (req, res) => {
     });
 });
 
-
-// --- This is the final, correct code for serving your React app ---
-// It copies the built frontend into a 'public' folder inside the backend.
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-
+// --- Final server listen ---
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
