@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@adminjs/express": "^6.1.0",
-    "@adminjs/sql": "^6.0.0",
+    "@adminjs/sql": "^6.1.1",
     "adminjs": "^7.5.3",
     "bcrypt": "^5.1.0",
     "connect-sqlite3": "^0.9.15",
