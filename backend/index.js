@@ -15,6 +15,7 @@ import { fileURLToPath } from 'url';
 import AdminJS from 'adminjs';
 import AdminJSExpress from '@adminjs/express';
 import { Database, Resource } from '@adminjs/sql';
+import session from 'express-session';
 
 dotenv.config();
 
@@ -38,16 +39,20 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-// --- This function sets up and launches AdminJS ---
+// --- This function sets up and launches AdminJS with Authentication ---
 const startAdminJS = async () => {
     try {
         AdminJS.registerAdapter({ Database, Resource });
 
-        const db_admin = await new Database('sqlite3', {
+        const db_admin = new Database('sqlite3', {
             connectionString: path.join(__dirname, 'users.db'),
         });
 
         const adminJs = new AdminJS({
+            branding: {
+                companyName: 'EYES Perfume',
+                softwareBrothers: false,
+            },
             resources: [
                 { resource: { table: 'users', database: db_admin } },
                 { resource: { table: 'products', database: db_admin } },
@@ -59,9 +64,36 @@ const startAdminJS = async () => {
             rootPath: '/admin',
         });
 
-        const adminRouter = AdminJSExpress.buildRouter(adminJs);
+        const adminRouter = AdminJSExpress.buildAuthenticatedRouter(adminJs, {
+            authenticate: async (email, password) => {
+                const user = await new Promise((resolve, reject) => {
+                    db.get('SELECT * FROM users WHERE email = ?', [email], (err, row) => {
+                        if (err) reject(err);
+                        resolve(row);
+                    });
+                });
+
+                if (user && user.role === 'admin') {
+                    const matched = await bcrypt.compare(password, user.passwordHash);
+                    if (matched) {
+                        return user;
+                    }
+                }
+                return false;
+            },
+            cookieName: 'admin-session',
+            cookiePassword: 'a-very-secret-and-long-password-for-cookies-change-me',
+        });
+
+        // Add middleware for session management
+        app.use(session({
+            secret: 'a-very-secret-and-long-password-for-sessions-change-me',
+            resave: false,
+            saveUninitialized: true,
+        }));
+        
         app.use(adminJs.options.rootPath, adminRouter);
-        console.log('AdminJS is running at /admin');
+        console.log('AdminJS with authentication is running at /admin');
     } catch (error) {
         console.error("Failed to start AdminJS:", error);
     }
