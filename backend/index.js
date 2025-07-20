@@ -60,7 +60,7 @@ function generateTempToken(email) {
 
 // --- Main Server Function ---
 const startServer = async () => {
-    
+
     // --- 1. MIDDLEWARE SETUP ---
     app.use(cors({
         origin: [
@@ -80,9 +80,11 @@ const startServer = async () => {
 
     // --- 2. ADMINJS SETUP ---
     try {
-        const db_admin = new Database('sqlite3', {
-            connectionString: path.join(__dirname, 'users.db'),
+        // === THIS SECTION IS CORRECTED ===
+        const db_admin = new Database(sqlite3.Database, {
+            filename: path.join(__dirname, 'users.db'),
         });
+
         const adminJs = new AdminJS({
             branding: { companyName: 'EYES Perfume', softwareBrothers: false },
             resources: [
@@ -117,7 +119,7 @@ const startServer = async () => {
     } catch (error) {
         console.error("Failed to start AdminJS:", error);
     }
-    
+
     // --- 3. DATABASE TABLE CREATION ---
     db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, firstName TEXT NOT NULL, lastName TEXT NOT NULL, email TEXT NOT NULL UNIQUE, passwordHash TEXT NOT NULL, role TEXT DEFAULT 'user')`);
     db.run(`CREATE TABLE IF NOT EXISTS cart (userId INTEGER, perfumeId INTEGER, quantity INTEGER, PRIMARY KEY (userId, perfumeId))`);
@@ -125,7 +127,7 @@ const startServer = async () => {
     db.run(`CREATE TABLE IF NOT EXISTS order_items (orderId INTEGER, perfumeId INTEGER, quantity INTEGER)`);
     db.run(`CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, perfumeId INTEGER, userId INTEGER, rating INTEGER, comment TEXT, createdAt TEXT)`);
     db.run(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price REAL NOT NULL, originalPrice REAL, image TEXT, description TEXT, category TEXT, rating REAL, isNew INTEGER, isBestseller INTEGER)`);
-    
+
     const productColumns = [ { name: 'originalPrice', type: 'REAL' }, { name: 'category', type: 'TEXT' }, { name: 'rating', type: 'REAL' }, { name: 'isNew', type: 'INTEGER' }, { name: 'isBestseller', type: 'INTEGER' }];
     db.all("PRAGMA table_info(products)", (err, columns) => {
         if (err) return;
@@ -159,7 +161,7 @@ const startServer = async () => {
             });
         });
     }));
-    
+
     // --- 5. API ROUTES ---
     function authenticateToken(req, res, next) {
         const authHeader = req.headers['authorization'];
@@ -181,7 +183,7 @@ const startServer = async () => {
             });
         });
     }
-    
+
     app.get('/', (req, res) => res.send('Perfume backend running'));
 
     app.post('/api/signup', async (req, res) => {
@@ -235,7 +237,7 @@ const startServer = async () => {
             res.json({ token, user: dbUser });
         });
     });
-    
+
     app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
     app.get('/auth/google/callback', passport.authenticate('google', { session: false, failureRedirect: '/login' }), (req, res) => {
         const user = req.user;
@@ -419,7 +421,7 @@ const startServer = async () => {
             });
         });
     });
-    
+
     // --- 6. START THE SERVER ---
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);
