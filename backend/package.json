@@ -6,9 +6,12 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-     "postinstall": "npm rebuild sqlite3"
+    "postinstall": "npm rebuild sqlite3"
   },
   "dependencies": {
+    "@adminjs/express": "^6.1.0",
+    "@adminjs/sql": "^2.2.6",
+    "adminjs": "^7.5.3",
     "bcrypt": "^5.1.0",
     "cors": "^2.8.5",
     "dotenv": "^17.0.1",
